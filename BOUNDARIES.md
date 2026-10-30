@@ -143,16 +143,39 @@ two-copy experiment or the student's independent verification.
 
 </details>
 
-**Where your sketch and `ARCHITECTURE.md` disagree.** List at least two
-places where your drawing and the repository's drawing are not the same
-picture, each in one line. Include things you drew that it does not, and things it draws
-that you did not.
+**Where your sketch and `ARCHITECTURE.md` disagree.**
 
-**How you decided which one is right.** For each disagreement above, name the
-check that settled it (the imports you read, the callers you listed, the wiring
-you traced, the test that pins the behavior). "It looked that way" is not a
-check, and neither is "the document says so". Your agent may produce the trace,
-but check it before you rely on it.
+1. **Overlap ownership:** the document labels `TimeInterval.overlaps` as the
+   only overlap implementation; my availability path includes a second
+   implementation inside `storage.InMemoryBookingStore.findConflicts`.
+2. **Authentication boundary:** "Booking a room" step 1 says the handler or
+   command authenticates the caller; my sketch shows authentication on the HTTP
+   path, while CLI booking passes an explicitly supplied `--user` ID.
+
+**How you decided which one is right.**
+
+1. Followed `AvailabilityService.busyIntervals` to `BookingStore.findConflicts`
+   in [AvailabilityService.java](core-domain/src/main/java/edu/cmu/cs214/campusreserve/core/service/AvailabilityService.java#L39),
+   then inspected its implementation in
+   [InMemoryBookingStore.java](storage/src/main/java/edu/cmu/cs214/campusreserve/storage/InMemoryBookingStore.java#L55).
+   It directly evaluates `booking.interval().start().isBefore(windowEnd)` and
+   `windowStart.isBefore(booking.interval().end())`. In contrast,
+   [ConflictChecker.firstConflict](core-domain/src/main/java/edu/cmu/cs214/campusreserve/core/policy/ConflictChecker.java#L29)
+   calls `TimeInterval.overlaps`. Both implement the half-open overlap rule,
+   but the responsibility is duplicated across domain and storage. This settles
+   why the availability arrow in the sketch goes straight to the store query.
+2. Traced CLI dispatch in
+   [CampusReserveCli.java](cli/src/main/java/edu/cmu/cs214/campusreserve/cli/CampusReserveCli.java#L148)
+   to [BookingCommands.Book.run](cli/src/main/java/edu/cmu/cs214/campusreserve/cli/commands/BookingCommands.java#L41):
+   line 44 reads `args.requireString("user")`, and line 56 passes that ID in a
+   `BookingRequest` to `BookingService.requestBooking`. Checked
+   [CliContext.inMemory](cli/src/main/java/edu/cmu/cs214/campusreserve/cli/CliContext.java#L52),
+   which wires stores and domain/billing services without authentication, and
+   [cli/pom.xml](cli/pom.xml), whose module dependencies exclude `accounts`.
+   Compared this with
+   [BookingsHandler.create](http-api/src/main/java/edu/cmu/cs214/campusreserve/http/BookingsHandler.java#L54),
+   which calls `auth.require(request)` and uses the authenticated account's user
+   ID. The sketch therefore keeps the authentication edge on the HTTP path.
 
 ---
 
